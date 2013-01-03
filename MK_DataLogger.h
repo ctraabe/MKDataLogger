@@ -10,19 +10,19 @@
 #include <functional>
 #include <iostream>
 
-	uint8_t ConnectToMK(int nComPortId, int nComBaudrate);
-	void LogControlValues();
+void LogDebugHeader();
+void LogDebugOutput();
 
-	// MK message handlers
-	void RecvDebugHeader(const char* header);
-	void RecvDebugOutput(const DebugOut_t& data);
+// MK message handlers
+void RecvDebugHeader(const char* header);
+void RecvDebugOutput(const DebugOut_t& data);
 
-	static volatile int received_sigterm = 0;
-	static volatile int received_nb_signals = 0;
+static volatile int received_sigterm = 0;
+static volatile int received_nb_signals = 0;
 
-	static MKConnection mMKConn;
-	char mMKDebugHeader;
-	DebugOut_t mMKDebugOutput;
-	std::ofstream mLogFile;
+uint32_t mDebugLabelCount = 0x00000000;
+char mDebugLabels[32][16];
+DebugOut_t mMKDebugOutput;
+std::ofstream mLogFile;
 
 #endif

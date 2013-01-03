@@ -9,42 +9,40 @@ static void sigterm_handler(int sig)
 	if (received_nb_signals > 3) exit(123);
 }
 
-void LogControlValues()
+void LogDebugHeader()
 {
-	for (size_t i = 0; i < 32; ++i) {
+	for (uint8_t i = 0; i < 32; i++) {
+		for (uint8_t j = 0; j < 16; j++) {
+			mLogFile << mDebugLabels[i][j];
+		}
+		if (i < 31) mLogFile << ",";
+	}
+	mLogFile << endl;
+}
+
+void LogDebougOutput()
+{
+	for (uint8_t i = 0; i < 32; ++i) {
 		mLogFile << mMKDebugOutput.Analog[i];
 		if (i < 31) mLogFile << ",";
 	}
-
 	mLogFile << endl;
 }
 
 void RecvDebugHeader(const char* header)
 {
-	mMKDebugHeader = *header;
+	cout << "Received header label " << (int)header[0] << endl;
+	for (int i = 0; i < 16; i++) {
+		mDebugLabels[(int)header[0]][i] = header[i+1];
+	}
+	mDebugLabelCount |= 0x00000001 << header[0];
 }
 
 void RecvDebugOutput(const DebugOut_t& data)
 {
+	cout << "Received debug data" << endl;
 	mMKDebugOutput = data;
-	LogControlValues();
-}
-
-uint8_t ConnectToMK(int nComPortId, int nComBaudrate)
-{
-	using namespace std::placeholders;
-
-	// Attempt connecting to the MK NaviCtrl
-	mMKConn = MKConnection(nComPortId, nComBaudrate);
-	if (!mMKConn) {
-		cerr << "Failed to connect to MikroKopter." << endl;
-		return 1;
-	} else {
-		// Hook up all the callback functions
-		mMKConn.SetDebugHeaderCallback(bind(RecvDebugHeader, _1));
-		mMKConn.SetDebugOutputCallback(bind(RecvDebugOutput, _1));
-		return 0;
-	}
+	LogDebougOutput();
 }
 
 void ParseOptions(int argc, char *argv[])
@@ -54,7 +52,16 @@ void ParseOptions(int argc, char *argv[])
 int main(int argc, char *argv[])
 {
 	// TODO: make this macro a parameter
-#define INTERVAL 100
+	// Frequency can go up to 100 Hz (limited by FlightCtrl)
+	enum { FREQUENCY = 10 }; // Run loop twice as fast as expected data rate
+
+	enum { LOOP_FREQUENCY = FREQUENCY * 2 }; // Run loop twice as fast as expected data rate
+	enum { HEADER_RQST_TIMER = (LOOP_FREQUENCY >> 5) + 1 }; // Attempt to receive header labels in 1 second
+	enum { OUTPUT_RQST_TIMER = 2 * LOOP_FREQUENCY }; // Send a fresh request every 2 seconds
+	enum { OUTPUT_PERIOD = 100 / FREQUENCY }; // Debug output period request in hundredths of a second
+
+	const timespec req = {0, 1000000000 / LOOP_FREQUENCY};
+	timespec rem; // remainder of interrupted nanosleep (unused);
 
 	signal(SIGQUIT, sigterm_handler); /* Quit (POSIX).  */
 	signal(SIGINT , sigterm_handler); /* Interrupt (ANSI).  */
@@ -75,26 +82,38 @@ int main(int argc, char *argv[])
 	}
 
 	// TODO: parameterize these inputs
-	if (ConnectToMK(16, 57600)) return 1;
+	if (OpenMKConnection(16, 57600)) return 1;
+
+	SetDebugHeaderCallback(bind(RecvDebugHeader, placeholders::_1));
+	SetDebugOutputCallback(bind(RecvDebugOutput, placeholders::_1));
 
 	while (received_sigterm == 0) {
-		static uint16_t counter = 0;
+		static uint16_t counter = 0xFFFF;
+		static bool getHeader = true;
 
-		if (mMKConn) {
-			mMKConn.ProcessIncoming();
+		ProcessIncoming();
 
-			// Request debug data being sent from the MK, this has to be done every few seconds or
-			// the MK will stop sending the data
-			if (counter > 4000 / INTERVAL) { // 2 seconds
-				mMKConn.SendDebugOutputInterval(INTERVAL);
+		// Request debug data being sent from the MK, this has to be done every few seconds or
+		// the MK will stop sending the data
+		if (getHeader && (counter > HEADER_RQST_TIMER)) {
+			if (mDebugLabelCount != 0xFFFFFFFF) {
+				SendDebugHeaderRequest();
 				counter = 0;
+			} else {
+				LogDebugHeader();
+				getHeader = false;
+				counter = OUTPUT_RQST_TIMER;
 			}
-			else {
-				counter++;
-			}
+		} else if (!getHeader && (counter > OUTPUT_RQST_TIMER)) {
+			SendDebugOutputRequest(OUTPUT_PERIOD);
+			counter = 0;
 		}
-		usleep(INTERVAL * 500);  // loop twice per expected reception interval
+		counter++;
+
+		nanosleep(&req, &rem);  // loop twice per expected reception interval
 	}
+
+	mLogFile.close();
 
 	return 0;
 }

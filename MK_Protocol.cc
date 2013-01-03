@@ -5,6 +5,9 @@
 
 #include "MK_Protocol.h"
 
+#include <cstdarg>
+#include <cstring>
+
 void Buffer_Clear(Buffer_t* pBuffer)
 {
 	pBuffer->DataBytes = 0;

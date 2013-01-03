@@ -3,13 +3,10 @@
  * This code is based on the MikroKopter NaviCtrl firmware, Copyright MikroKopter.
  */
 
-#ifndef __MK_PROTOCOL_H
-#define __MK_PROTOCOL_H
+#ifndef __MKPROTOCOL_H
+#define __MKPROTOCOL_H
 
-#include <cstdarg>
 #include <cstdint>
-#include <cstdlib>
-#include <cstring>
 
 // slave addresses
 #define ANY_ADDRESS 0
@@ -41,8 +38,7 @@ typedef struct
 } __attribute__((packed)) SerialMsg_t;
 
 uint8_t MKProtocol_CollectSerialFrame(Buffer_t* pRxBuff, uint8_t c);
-uint8_t MKProtocol_CreateSerialFrame(Buffer_t* pTxBuff, uint8_t CmdID, uint8_t Address,
-		uint8_t numofbuffers , ...);  // uint8_t *data, uint8_t len, ....;
+uint8_t MKProtocol_CreateSerialFrame(Buffer_t* pTxBuff, uint8_t CmdID, uint8_t Address, uint8_t numofbuffers , ...); //uint8_t *data, uint8_t len, ....;
 void MKProtocol_DecodeSerialFrameHeader(Buffer_t* pRxBuff, SerialMsg_t* pSerialMsg);
 void MKProtocol_DecodeSerialFrameData(Buffer_t* pRxBuff, SerialMsg_t* pSerialMsg);
 
