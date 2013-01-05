@@ -9,22 +9,14 @@ static void sigterm_handler(int sig)
 	if (received_nb_signals > 3) exit(123);
 }
 
-void LogDebugHeader()
+void LogDebugHeader(bool lightDB)
 {
-	for (uint8_t i = 0; i < 32; i++) {
+	uint8_t k = lightDB? 4 : 32;
+	for (uint8_t i = 0; i < k; i++) {
 		for (uint8_t j = 0; j < 16; j++) {
 			mLogFile << mDebugLabels[i][j];
 		}
-		if (i < 31) mLogFile << ",";
-	}
-	mLogFile << endl;
-}
-
-void LogDebougOutput()
-{
-	for (uint8_t i = 0; i < 32; ++i) {
-		mLogFile << mMKDebugOutput.Analog[i];
-		if (i < 31) mLogFile << ",";
+		if (i < k - 1) mLogFile << ",";
 	}
 	mLogFile << endl;
 }
@@ -41,16 +33,30 @@ void RecvDebugHeader(const char* header)
 void RecvDebugOutput(const DebugOut_t& data)
 {
 	// cout << "Received debug data" << endl;
-	mMKDebugOutput = data;
-	LogDebougOutput();
+	for (uint8_t i = 0; i < 32; ++i) {
+		mLogFile << data.Analog[i];
+		if (i < 31) mLogFile << ",";
+	}
+	mLogFile << endl;
+}
+
+void RecvDebugSmOut(const DebugSmOut_t& data)
+{
+	// cout << "Received debug data" << endl;
+	for (uint8_t i = 0; i < 4; ++i) {
+		mLogFile << data.Analog[i];
+		if (i < 3) mLogFile << ",";
+	}
+	mLogFile << endl;
 }
 
 bool ParseOptions(int argc, char *argv[], int *port, int *frequency, string *filename,
-		bool *getHeader)
+		bool *getHeader, bool *lightDB)
 {
 	// Possible options:
 	// -f output file name
 	// -h show usage
+	// -l light debug
 	// -n no header
 	// -p communication port
 	// -r capture rate (Hz)
@@ -66,6 +72,8 @@ bool ParseOptions(int argc, char *argv[], int *port, int *frequency, string *fil
 				}
 			} else if (argv[i][1] == 'h') {
 				return true;
+			} else if (argv[i][1] == 'l') {
+				*lightDB = true;
 			} else if (argv[i][1] == 'n') {
 				*getHeader = false;
 			} else if (argv[i][1] == 'p') {
@@ -78,7 +86,7 @@ bool ParseOptions(int argc, char *argv[], int *port, int *frequency, string *fil
 				}
 			} else if (argv[i][1] == 'r') {
 				if ((i == argc - 1) || argv[i+1][0] == '-') {
-					cerr << "-p option requires a frequency in Hz (2 - 100)" << endl;
+					cerr << "-p option requires a frequency in Hz (2 - 250)" << endl;
 					return true;
 				} else {
 					*frequency = atoi(argv[i+1]);
@@ -95,9 +103,9 @@ bool ParseOptions(int argc, char *argv[], int *port, int *frequency, string *fil
 
 int main(int argc, char *argv[])
 {
-	bool getHeader = true;
+	bool getHeader = true, lightDB = false;
 	int port = 16, frequency = 10;
-	string filename = "mk_datalog.txt";
+	string filename = "mk_datalog.csv";
 
 	signal(SIGQUIT, sigterm_handler); /* Quit (POSIX).  */
 	signal(SIGINT , sigterm_handler); /* Interrupt (ANSI).  */
@@ -108,19 +116,19 @@ int main(int argc, char *argv[])
 	cout << "  -------------" << endl;
 	cout << endl;
 
-	if (ParseOptions(argc, argv, &port, &frequency, &filename, &getHeader)) {
+	if (ParseOptions(argc, argv, &port, &frequency, &filename, &getHeader, &lightDB)) {
 		cout << "usage: " << argv[0] << " [-options ...]" << endl;
 		cout << "options:" << endl;
 		cout << "    -f <filename>   Specify outout file name" << endl;
 		cout << "    -h              Print this usage message" << endl;
+		cout << "    -l              Switch to \"light debug\" (up to 250 Hz)" << endl;
 		cout << "    -n              No header in the output file" << endl;
 		cout << "    -p <port>       Specify serial commport" << endl;
-		cout << "    -r <rate>       Specify logging rate in Hz (2 - 100)" << endl;
+		cout << "    -r <rate>       Specify logging rate in Hz (2 - 55)" << endl;
 		cout << endl;
 		return 1;
 	}
-	if (frequency < 2) frequency = 2;
-	if (frequency > 100) frequency = 100;
+	frequency = min(max(frequency, lightDB? 4 : 2), (lightDB? 250 : 55));
 
 	// TODO: make filename a paramter
 	mLogFile.open(filename, ios::out | ios::trunc);
@@ -139,18 +147,20 @@ int main(int argc, char *argv[])
 	cout << "  Writing to file " << filename << endl;
 	cout << endl;
 
-	const int LOOP_FREQUENCY = frequency * 2; // Run loop twice as fast as expected data rate
-	const int HEADER_RQST_TIMER = (LOOP_FREQUENCY >> 5) + 1; // Attempt to receive header labels in 1 second
+	const int LOOP_FREQUENCY = max(frequency * 2, 32); // Run loop twice as fast as expected data rate
+	const int HEADER_RQST_TIMER = LOOP_FREQUENCY >> 5; // Attempt to receive header labels in 1 second
 	const int OUTPUT_RQST_TIMER = 2 * LOOP_FREQUENCY; // Send a fresh request every 2 seconds
-	const long OUTPUT_PERIOD = 100 / frequency; // Debug output period request in hundredths of a second
+	const uint8_t OUTPUT_PERIOD = (lightDB? 1000 : 100) / frequency; // Debug output period request in ms
 
 	const timespec REQ = {0, 1000000000 / LOOP_FREQUENCY};
 	timespec rem; // remainder of interrupted nanosleep (unused);
 
 	SetDebugHeaderCallback(bind(RecvDebugHeader, placeholders::_1));
 	SetDebugOutputCallback(bind(RecvDebugOutput, placeholders::_1));
+	SetDebugSmOutCallback(bind(RecvDebugSmOut, placeholders::_1));
 
 	if (getHeader) cout << "Receiving header text" << endl;
+	else cout << "Starting debug logging" << endl;
 
 	while (received_sigterm == 0) {
 		static uint16_t counter = 0xFFFF;
@@ -160,18 +170,19 @@ int main(int argc, char *argv[])
 		// Request debug data being sent from the MK, this has to be done every few seconds or
 		// the MK will stop sending the data
 		if (getHeader && (counter > HEADER_RQST_TIMER)) {
-			if (mDebugLabelCount != 0xFFFFFFFF) {
-				SendDebugHeaderRequest();
+			if ((mDebugLabelCount != 0xFFFFFFFF)
+					&& (!lightDB || (mDebugLabelCount != 0x0000000F))) {
+				SendDebugHeaderRequest(lightDB);
 				counter = 0;
 			} else {
 				cout << "Finished receving header" << endl;
 				cout << "Starting debug logging" << endl;
-				LogDebugHeader();
+				LogDebugHeader(lightDB);
 				getHeader = false;
 				counter = OUTPUT_RQST_TIMER;
 			}
 		} else if (!getHeader && (counter > OUTPUT_RQST_TIMER)) {
-			SendDebugOutputRequest(OUTPUT_PERIOD);
+			SendDebugOutputRequest(OUTPUT_PERIOD, lightDB);
 			counter = 0;
 		}
 		counter++;
