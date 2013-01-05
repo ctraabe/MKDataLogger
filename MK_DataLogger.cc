@@ -31,7 +31,7 @@ void LogDebougOutput()
 
 void RecvDebugHeader(const char* header)
 {
-	cout << "Received header label " << (int)header[0] << endl;
+	// cout << "Received header label " << (int)header[0] << endl;
 	for (int i = 0; i < 16; i++) {
 		mDebugLabels[(int)header[0]][i] = header[i+1];
 	}
@@ -40,28 +40,64 @@ void RecvDebugHeader(const char* header)
 
 void RecvDebugOutput(const DebugOut_t& data)
 {
-	cout << "Received debug data" << endl;
+	// cout << "Received debug data" << endl;
 	mMKDebugOutput = data;
 	LogDebougOutput();
 }
 
-void ParseOptions(int argc, char *argv[])
+bool ParseOptions(int argc, char *argv[], int *port, int *frequency, string *filename,
+		bool *getHeader)
 {
+	// Possible options:
+	// -f output file name
+	// -h show usage
+	// -n no header
+	// -p communication port
+	// -r capture rate (Hz)
+	for (int i = 1; i < argc; i++) {
+		if (argv[i][0] == '-') {
+			if (argv[i][1] == 'f') {
+				if ((i == argc - 1) || argv[i+1][0] == '-') {
+					cerr << "-f option requires a filename" << endl;
+					return true;
+				} else {
+					*filename = argv[i+1];
+					i++;
+				}
+			} else if (argv[i][1] == 'h') {
+				return true;
+			} else if (argv[i][1] == 'n') {
+				*getHeader = false;
+			} else if (argv[i][1] == 'p') {
+				if ((i == argc - 1) || argv[i+1][0] == '-') {
+					cerr << "-p option requires a port number" << endl;
+					return true;
+				} else {
+					*port = atoi(argv[i+1]);
+					i++;
+				}
+			} else if (argv[i][1] == 'r') {
+				if ((i == argc - 1) || argv[i+1][0] == '-') {
+					cerr << "-p option requires a frequency in Hz (2 - 100)" << endl;
+					return true;
+				} else {
+					*frequency = atoi(argv[i+1]);
+					i++;
+				}
+			}
+		} else {
+			cerr << "Unrecognized argument" << endl;
+			return true;
+		}
+	}
+	return false;
 }
 
 int main(int argc, char *argv[])
 {
-	// TODO: make this macro a parameter
-	// Frequency can go up to 100 Hz (limited by FlightCtrl)
-	enum { FREQUENCY = 10 }; // Run loop twice as fast as expected data rate
-
-	enum { LOOP_FREQUENCY = FREQUENCY * 2 }; // Run loop twice as fast as expected data rate
-	enum { HEADER_RQST_TIMER = (LOOP_FREQUENCY >> 5) + 1 }; // Attempt to receive header labels in 1 second
-	enum { OUTPUT_RQST_TIMER = 2 * LOOP_FREQUENCY }; // Send a fresh request every 2 seconds
-	enum { OUTPUT_PERIOD = 100 / FREQUENCY }; // Debug output period request in hundredths of a second
-
-	const timespec req = {0, 1000000000 / LOOP_FREQUENCY};
-	timespec rem; // remainder of interrupted nanosleep (unused);
+	bool getHeader = true;
+	int port = 16, frequency = 10;
+	string filename = "mk_datalog.txt";
 
 	signal(SIGQUIT, sigterm_handler); /* Quit (POSIX).  */
 	signal(SIGINT , sigterm_handler); /* Interrupt (ANSI).  */
@@ -72,24 +108,52 @@ int main(int argc, char *argv[])
 	cout << "  -------------" << endl;
 	cout << endl;
 
-	ParseOptions(argc, argv);
+	if (ParseOptions(argc, argv, &port, &frequency, &filename, &getHeader)) {
+		cout << "usage: " << argv[0] << " [-options ...]" << endl;
+		cout << "options:" << endl;
+		cout << "    -f <filename>   Specify outout file name" << endl;
+		cout << "    -h              Print this usage message" << endl;
+		cout << "    -n              No header in the output file" << endl;
+		cout << "    -p <port>       Specify serial commport" << endl;
+		cout << "    -r <rate>       Specify logging rate in Hz (2 - 100)" << endl;
+		cout << endl;
+		return 1;
+	}
+	if (frequency < 2) frequency = 2;
+	if (frequency > 100) frequency = 100;
 
 	// TODO: make filename a paramter
-	mLogFile.open("mk_datalog.txt", ios::out | ios::trunc);
+	mLogFile.open(filename, ios::out | ios::trunc);
 	if (!mLogFile) {
-		cerr << "Failed to open mk_datalog.txt" << endl;
+		cerr << "Failed to open " << filename << endl;
 		return 1;
 	}
 
-	// TODO: parameterize these inputs
-	if (OpenMKConnection(16, 57600)) return 1;
+	if (OpenMKConnection(port, 57600)) {
+		cerr << "Could not connect on port " << port << endl;
+		return 1;
+	}
+
+	cout << "  Communicating on port " << port << endl;
+	cout << "  Requesting debug data at " << frequency << " Hz" << endl;
+	cout << "  Writing to file " << filename << endl;
+	cout << endl;
+
+	const int LOOP_FREQUENCY = frequency * 2; // Run loop twice as fast as expected data rate
+	const int HEADER_RQST_TIMER = (LOOP_FREQUENCY >> 5) + 1; // Attempt to receive header labels in 1 second
+	const int OUTPUT_RQST_TIMER = 2 * LOOP_FREQUENCY; // Send a fresh request every 2 seconds
+	const long OUTPUT_PERIOD = 100 / frequency; // Debug output period request in hundredths of a second
+
+	const timespec REQ = {0, 1000000000 / LOOP_FREQUENCY};
+	timespec rem; // remainder of interrupted nanosleep (unused);
 
 	SetDebugHeaderCallback(bind(RecvDebugHeader, placeholders::_1));
 	SetDebugOutputCallback(bind(RecvDebugOutput, placeholders::_1));
 
+	if (getHeader) cout << "Receiving header text" << endl;
+
 	while (received_sigterm == 0) {
 		static uint16_t counter = 0xFFFF;
-		static bool getHeader = true;
 
 		ProcessIncoming();
 
@@ -100,6 +164,8 @@ int main(int argc, char *argv[])
 				SendDebugHeaderRequest();
 				counter = 0;
 			} else {
+				cout << "Finished receving header" << endl;
+				cout << "Starting debug logging" << endl;
 				LogDebugHeader();
 				getHeader = false;
 				counter = OUTPUT_RQST_TIMER;
@@ -110,9 +176,12 @@ int main(int argc, char *argv[])
 		}
 		counter++;
 
-		nanosleep(&req, &rem);  // loop twice per expected reception interval
+		nanosleep(&REQ, &rem);  // loop twice per expected reception interval
 	}
 
+	cout << endl;
+	cout << "Received termination signal" << endl;
+	cout << "Closing log file" << endl;
 	mLogFile.close();
 
 	return 0;
