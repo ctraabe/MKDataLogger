@@ -110,6 +110,7 @@ void ProcessIncoming()
 						break;
 					case RXCMD_DEBUG_OUTPUT:
 						HandleDebugOutput(msg, false);
+						break;
 					case RXCMD_DEBUGSM_OUTPUT:
 						HandleDebugOutput(msg, true);
 						break;
