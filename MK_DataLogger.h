@@ -11,6 +11,8 @@
 #include <functional>
 #include <iostream>
 
+#include <sys/time.h>
+
 // MK message handlers
 void RecvDebugHeader(const char* header);
 void RecvDebugOutput(const DebugOut_t& data);
@@ -23,6 +25,7 @@ static volatile int received_nb_signals = 0;
 
 uint32_t mDebugLabelCount = 0x00000000;
 char mDebugLabels[32][16];
+struct timeval StartTime;
 std::ofstream mLogFile;
 
 #endif

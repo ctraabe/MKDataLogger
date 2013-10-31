@@ -28,6 +28,7 @@ void ProcessIncoming();
 
 void SendDebugHeaderRequest(bool lightDB);
 void SendDebugOutputRequest(uint8_t interval, bool lightDB);
+void SendMotorTestRequest(uint8_t setPoint);
 
 void SendBuffer(const Buffer_t& txBuffer);
 

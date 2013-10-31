@@ -15,7 +15,8 @@ enum TxCommands : uint8_t {
 	TXCMD_DEBUG_HEADER = 'a',
 	TXCMD_DEBUG_OUTPUT = 'd',
 	TXCMD_DEBUGSM_OUTPUT = 'i',
-	TXCMD_DEBUGSM_HEADER = 'o'
+	TXCMD_DEBUGSM_HEADER = 'o',
+	TXCMD_MOTOR_TEST='t'
 };
 
 enum { TX_BUFFER_SIZE = 4096 };
@@ -82,6 +83,19 @@ void SendDebugOutputRequest(uint8_t interval, bool lightDB)
 	SendBuffer(txBuffer);
 }
 
+void SendMotorTestRequest(uint8_t setPoint)
+{
+	// Initialize a buffer for the packet
+	Buffer_t txBuffer;
+	Buffer_Init(&txBuffer, mTxBufferData, TX_BUFFER_SIZE);
+
+	// cout << "Sending motor request " << (int)setPoint << endl;
+	MKProtocol_CreateSerialFrame(&txBuffer, TXCMD_MOTOR_TEST, FC_ADDRESS, 1, &setPoint, 1);
+
+	// Send txBuffer to NaviCtrl
+	SendBuffer(txBuffer);
+}
+
 void ProcessIncoming()
 {
 	const int RX_BUFFER_SIZE = 4096;
@@ -102,7 +116,7 @@ void ProcessIncoming()
 				// Reset the buffer so it can be used for next message
 				Buffer_Clear(&mRxBuffer);
 
-				if (msg.Address == FC_ADDRESS) {
+				if (msg.Address > 0 && msg.Address < 6) {
 					// Messages addressed from FlightCtrl
 					switch (msg.CmdID) {
 					case RXCMD_DEBUG_HEADER:

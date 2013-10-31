@@ -11,6 +11,7 @@ static void sigterm_handler(int sig)
 
 void LogDebugHeader(bool lightDB)
 {
+	mLogFile << "Time,";
 	uint8_t k = lightDB? 4 : 32;
 	for (uint8_t i = 0; i < k; i++) {
 		for (uint8_t j = 0; j < 16; j++) {
@@ -32,7 +33,12 @@ void RecvDebugHeader(const char* header)
 
 void RecvDebugOutput(const DebugOut_t& data)
 {
+	struct timeval now;
+	gettimeofday(&now, NULL);
+
 	// cout << "Received debug data" << endl;
+	mLogFile << (float)((now.tv_sec - StartTime.tv_sec) * 1000000L
+			+ (now.tv_usec - StartTime.tv_usec)) / 1.0e6 << ",";
 	for (uint8_t i = 0; i < 32; ++i) {
 		mLogFile << data.Analog[i];
 		if (i < 31) mLogFile << ",";
@@ -42,7 +48,12 @@ void RecvDebugOutput(const DebugOut_t& data)
 
 void RecvDebugSmOut(const DebugSmOut_t& data)
 {
+	struct timeval now;
+	gettimeofday(&now, NULL);
+
 	// cout << "Received debug data" << endl;
+	mLogFile << (float)((now.tv_sec - StartTime.tv_sec) * 1000000L
+			+ (now.tv_usec - StartTime.tv_usec)) / 1.0e6 << ",";
 	for (uint8_t i = 0; i < 4; ++i) {
 		mLogFile << data.Analog[i];
 		if (i < 3) mLogFile << ",";
@@ -51,7 +62,7 @@ void RecvDebugSmOut(const DebugSmOut_t& data)
 }
 
 bool ParseOptions(int argc, char *argv[], int *port, int *frequency, string *filename,
-		bool *getHeader, bool *lightDB)
+		bool *getHeader, bool *lightDB, bool *motorTest)
 {
 	// Possible options:
 	// -f output file name
@@ -74,6 +85,8 @@ bool ParseOptions(int argc, char *argv[], int *port, int *frequency, string *fil
 				return true;
 			} else if (argv[i][1] == 'l') {
 				*lightDB = true;
+			} else if (argv[i][1] == 'm') {
+				*motorTest = true;
 			} else if (argv[i][1] == 'n') {
 				*getHeader = false;
 			} else if (argv[i][1] == 'p') {
@@ -103,7 +116,7 @@ bool ParseOptions(int argc, char *argv[], int *port, int *frequency, string *fil
 
 int main(int argc, char *argv[])
 {
-	bool getHeader = true, lightDB = false;
+	bool getHeader = true, lightDB = false, motorTest = false;
 	int port = 16, frequency = 10;
 	string filename = "mk_datalog.csv";
 
@@ -116,12 +129,13 @@ int main(int argc, char *argv[])
 	cout << "  -------------" << endl;
 	cout << endl;
 
-	if (ParseOptions(argc, argv, &port, &frequency, &filename, &getHeader, &lightDB)) {
+	if (ParseOptions(argc, argv, &port, &frequency, &filename, &getHeader, &lightDB, &motorTest)) {
 		cout << "usage: " << argv[0] << " [-options ...]" << endl;
 		cout << "options:" << endl;
 		cout << "    -f <filename>   Specify outout file name" << endl;
 		cout << "    -h              Print this usage message" << endl;
 		cout << "    -l              Switch to \"light debug\" (up to 250 Hz)" << endl;
+		cout << "    -m              Run motor test" << endl;
 		cout << "    -n              No header in the output file" << endl;
 		cout << "    -p <port>       Specify serial commport" << endl;
 		cout << "    -r <rate>       Specify logging rate in Hz (2 - 55)" << endl;
@@ -147,9 +161,20 @@ int main(int argc, char *argv[])
 	cout << "  Writing to file " << filename << endl;
 	cout << endl;
 
+	if (motorTest) {
+		cout << "  WARNING: You have requested to activte a motor!" << endl;
+		cout << "  Type \"Y\" and hit \"Enter\" to continue." << endl;
+		cout << endl;
+		cout << "> ";
+		fflush(stdin);
+		char c = getchar();
+		if (c != 'Y') return 0;
+	}
+
 	const int LOOP_FREQUENCY = max(frequency * 2, 32); // Run loop twice as fast as expected data rate
-	const int HEADER_RQST_TIMER = LOOP_FREQUENCY >> 5; // Attempt to receive header labels in 1 second
-	const int OUTPUT_RQST_TIMER = 2 * LOOP_FREQUENCY; // Send a fresh request every 2 seconds
+	const int HEADER_RQST_TIMER = LOOP_FREQUENCY / 32; // Attempt to receive header labels in 1 second
+	const int OUTPUT_RQST_TIMER = LOOP_FREQUENCY / 4; // Send a fresh request every 2 seconds
+	const int MOTOR_TEST_TIMER = LOOP_FREQUENCY / 4; // Send the motor test request 4 times per second
 	const uint8_t OUTPUT_PERIOD = (lightDB? 1000 : 100) / frequency; // Debug output period request in ms
 
 	const timespec REQ = {0, 1000000000 / LOOP_FREQUENCY};
@@ -163,7 +188,7 @@ int main(int argc, char *argv[])
 	else cout << "Starting debug logging" << endl;
 
 	while (received_sigterm == 0) {
-		static uint16_t counter = 0xFFFF;
+		static uint16_t counter = 0xFFFF, counter2 = 0;
 
 		ProcessIncoming();
 
@@ -180,15 +205,37 @@ int main(int argc, char *argv[])
 				LogDebugHeader(lightDB);
 				getHeader = false;
 				counter = OUTPUT_RQST_TIMER;
+				gettimeofday(&StartTime, NULL);
 			}
 		} else if (!getHeader && (counter > OUTPUT_RQST_TIMER)) {
 			SendDebugOutputRequest(OUTPUT_PERIOD, lightDB);
 			counter = 0;
 		}
+		else if (motorTest && !getHeader) {
+			static int16_t motorSetPoint = 15;
+			static int16_t step = 30;
+			if (!(counter2 % MOTOR_TEST_TIMER)) {
+				SendMotorTestRequest((uint8_t)motorSetPoint);
+
+				if (counter2 == 10 * MOTOR_TEST_TIMER) {
+					if (motorSetPoint <= 15 && step < 0) {
+						if (step > -240) step *= -2;
+						else motorTest = false;
+					}
+					else if (motorSetPoint + step > 255) step = -step;
+					motorSetPoint += step;
+					counter2 = 0;
+					cout << "Reguesting motor test value of " << motorSetPoint << endl;
+				}
+			}
+			counter2++;
+		}
 		counter++;
 
 		nanosleep(&REQ, &rem);  // loop twice per expected reception interval
 	}
+
+	if(motorTest) SendMotorTestRequest(0);
 
 	cout << endl;
 	cout << "Received termination signal" << endl;
