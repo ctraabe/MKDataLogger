@@ -12,22 +12,30 @@ struct DebugOut_t
 	int16_t Analog[32];
 } __attribute__((packed));
 
-typedef std::function<void(const char*)> DebugHeaderCallback;
+// 18-byte data structure for fast transmission (up to 192 Hz)
+struct HighSpeed_t {
+	int16_t int16[9];
+} __attribute__((packed));
+
+typedef std::function<void(const char*)> HeaderCallback;
 typedef std::function<void(const DebugOut_t&)> DebugOutputCallback;
+typedef std::function<void(const HighSpeed_t&)> HighSpeedOutputCallback;
 
 bool OpenMKConnection(int comPortId, int baudrate);
 
 void ProcessIncoming();
 
-void SendDebugHeaderRequest();
-void SendDebugOutputRequest(uint8_t interval);
+void SendHeaderRequest(bool highSpeed);
+void SendOutputRequest(uint8_t interval);
 
 void SendBuffer(const Buffer_t& txBuffer);
 
-void SetDebugHeaderCallback(const DebugHeaderCallback &callback);
+void SetHeaderCallback(const HeaderCallback &callback);
 void SetDebugOutputCallback(const DebugOutputCallback &callback);
+void SetHighSpeedOutputCallback(const HighSpeedOutputCallback &callback);
 
-void HandleDebugHeader(const SerialMsg_t& msg);
+void HandleHeader(const SerialMsg_t& msg);
 void HandleDebugOutput(const SerialMsg_t& msg);
+void HandleHighSpeedOutput(const SerialMsg_t& msg);
 
 #endif

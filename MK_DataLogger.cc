@@ -9,44 +9,61 @@ static void sigterm_handler(int sig)
 	if (received_nb_signals > 3) exit(123);
 }
 
-void LogDebugHeader()
+void LogHeader(bool highSpeed)
 {
-	for (uint8_t i = 0; i < 32; i++) {
+	int n = highSpeed ? 9 : 32;
+	for (uint8_t i = 0; i < n; i++) {
 		for (uint8_t j = 0; j < 16; j++) {
-			mLogFile << mDebugLabels[i][j];
+			mLogFile << mLabels[i][j];
 		}
-		if (i < 31) mLogFile << ",";
+		if (i < n - 1) mLogFile << ",";
 	}
 	mLogFile << endl;
 }
 
-void LogDebougOutput()
+void LogOutput(bool highSpeed)
 {
-	for (uint8_t i = 0; i < 32; ++i) {
-		mLogFile << mMKDebugOutput.Analog[i];
-		if (i < 31) mLogFile << ",";
+	if (highSpeed) {
+		for (uint8_t i = 0; i < 9; ++i) {
+			mLogFile << mMKHighSpeedOutput.int16[i];
+			if (i < 8) mLogFile << ",";
+		}
+	} else {
+		for (uint8_t i = 0; i < 32; ++i) {
+			mLogFile << mMKDebugOutput.Analog[i];
+			if (i < 31) mLogFile << ",";
+		}
 	}
 	mLogFile << endl;
 }
 
-void RecvDebugHeader(const char* header)
+void RecvHeader(const char* header)
 {
-	// cout << "Received header label " << (int)header[0] << endl;
+	int labelNumber = (int)header[0];
+	if (labelNumber > 32) labelNumber -= 32;
+	// cout << "Received header label " << labelNumber << endl;
 	for (int i = 0; i < 16; i++) {
-		mDebugLabels[(int)header[0]][i] = header[i+1];
+		mLabels[labelNumber][i] = header[i+1];
 	}
-	mDebugLabelCount |= 0x00000001 << header[0];
+	mLabelsRcvd |= 0x00000001 << labelNumber;
 }
 
 void RecvDebugOutput(const DebugOut_t& data)
 {
 	// cout << "Received debug data" << endl;
 	mMKDebugOutput = data;
-	LogDebougOutput();
+	LogOutput(false);
 }
 
-bool ParseOptions(int argc, char *argv[], int *port, int *frequency, string *filename,
-		bool *getHeader)
+void RecvHighSpeedOutput(const HighSpeed_t& data)
+{
+	// cout << "Received high-speed data" << endl;
+	mMKHighSpeedOutput = data;
+	LogOutput(true);
+}
+
+bool ParseOptions(int argc, char *argv[], int *port, int *frequency,
+		string *filename, bool *getHeader, bool *highSpeed)
 {
 	// Possible options:
 	// -f output file name
@@ -54,6 +71,7 @@ bool ParseOptions(int argc, char *argv[], int *port, int *frequency, string *fil
 	// -n no header
 	// -p communication port
 	// -r capture rate (Hz)
+	// -i High-speed data
 	for (int i = 1; i < argc; i++) {
 		if (argv[i][0] == '-') {
 			if (argv[i][1] == 'f') {
@@ -84,6 +102,8 @@ bool ParseOptions(int argc, char *argv[], int *port, int *frequency, string *fil
 					*frequency = atoi(argv[i+1]);
 					i++;
 				}
+			} else if (argv[i][1] == 'i') {
+				*highSpeed = true;
 			}
 		} else {
 			cerr << "Unrecognized argument" << endl;
@@ -95,7 +115,7 @@ bool ParseOptions(int argc, char *argv[], int *port, int *frequency, string *fil
 
 int main(int argc, char *argv[])
 {
-	bool getHeader = true;
+	bool getHeader = true, highSpeed = false;
 	int port = 16, frequency = 10;
 	string filename = "mk_datalog.txt";
 
@@ -108,21 +128,27 @@ int main(int argc, char *argv[])
 	cout << "  -------------" << endl;
 	cout << endl;
 
-	if (ParseOptions(argc, argv, &port, &frequency, &filename, &getHeader)) {
+	if (ParseOptions(argc, argv, &port, &frequency, &filename, &getHeader,
+			&highSpeed)) {
 		cout << "usage: " << argv[0] << " [-options ...]" << endl;
 		cout << "options:" << endl;
-		cout << "    -f <filename>   Specify outout file name" << endl;
+		cout << "    -f <filename>   Specify output file name" << endl;
 		cout << "    -h              Print this usage message" << endl;
 		cout << "    -n              No header in the output file" << endl;
 		cout << "    -p <port>       Specify serial commport" << endl;
 		cout << "    -r <rate>       Specify logging rate in Hz (2 - 100)" << endl;
+		cout << "    -i              High-speed mode (custom firmware)" << endl;
 		cout << endl;
 		return 1;
 	}
-	if (frequency < 2) frequency = 2;
-	if (frequency > 100) frequency = 100;
 
-	// TODO: make filename a paramter
+	if (highSpeed)
+		frequency = 128;
+	else if (frequency < 2)
+		frequency = 2;
+	else if (frequency > 100)
+		frequency = 100;
+
 	mLogFile.open(filename, ios::out | ios::trunc);
 	if (!mLogFile) {
 		cerr << "Failed to open " << filename << endl;
@@ -142,13 +168,14 @@ int main(int argc, char *argv[])
 	const int LOOP_FREQUENCY = frequency * 2; // Run loop twice as fast as expected data rate
 	const int HEADER_RQST_TIMER = (LOOP_FREQUENCY >> 5) + 1; // Attempt to receive header labels in 1 second
 	const int OUTPUT_RQST_TIMER = 2 * LOOP_FREQUENCY; // Send a fresh request every 2 seconds
-	const long OUTPUT_PERIOD = 100 / frequency; // Debug output period request in hundredths of a second
+	const int OUTPUT_PERIOD = 100 / frequency; // Debug output period request in hundredths of a second
 
 	const timespec REQ = {0, 1000000000 / LOOP_FREQUENCY};
 	timespec rem; // remainder of interrupted nanosleep (unused);
 
-	SetDebugHeaderCallback(bind(RecvDebugHeader, placeholders::_1));
+	SetHeaderCallback(bind(RecvHeader, placeholders::_1));
 	SetDebugOutputCallback(bind(RecvDebugOutput, placeholders::_1));
+	SetHighSpeedOutputCallback(bind(RecvHighSpeedOutput, placeholders::_1));
 
 	if (getHeader) cout << "Receiving header text" << endl;
 
@@ -160,21 +187,22 @@ int main(int argc, char *argv[])
 		// Request debug data being sent from the MK, this has to be done every few seconds or
 		// the MK will stop sending the data
 		if (getHeader && (counter > HEADER_RQST_TIMER)) {
-			if (mDebugLabelCount != 0xFFFFFFFF) {
-				SendDebugHeaderRequest();
+			if ((highSpeed && (mLabelsRcvd != 0x000001FF))
+					|| (!highSpeed && (mLabelsRcvd != 0xFFFFFFFF))) {
+				SendHeaderRequest(highSpeed);
 				counter = 0;
 			} else {
-				cout << "Finished receving header" << endl;
+				cout << "Finished receiving header" << endl;
 				cout << "Starting debug logging" << endl;
-				LogDebugHeader();
+				LogHeader(highSpeed);
 				getHeader = false;
-				counter = OUTPUT_RQST_TIMER;
+				counter = OUTPUT_RQST_TIMER  + 1;
 			}
 		} else if (!getHeader && (counter > OUTPUT_RQST_TIMER)) {
-			SendDebugOutputRequest(OUTPUT_PERIOD);
+			SendOutputRequest(OUTPUT_PERIOD);
 			counter = 0;
 		}
-		counter++;
+		if (getHeader || !highSpeed) counter++;
 
 		nanosleep(&REQ, &rem);  // loop twice per expected reception interval
 	}
