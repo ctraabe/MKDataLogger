@@ -10,6 +10,7 @@
 #include <fstream>
 #include <functional>
 #include <iostream>
+#include <sys/time.h>
 
 void LogDebugHeader();
 void LogDebugOutput();

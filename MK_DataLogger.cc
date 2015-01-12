@@ -23,6 +23,11 @@ void LogHeader(bool highSpeed)
 
 void LogOutput(bool highSpeed)
 {
+	// struct timeval now;
+	// gettimeofday(&now, NULL);
+	// mLogFile << (float)((now.tv_sec - StartTime.tv_sec) * 1000000L
+	// 		+ (now.tv_usec - StartTime.tv_usec)) / 1.0e6 << ",";
+
 	if (highSpeed) {
 		for (uint8_t i = 0; i < 9; ++i) {
 			mLogFile << mMKHighSpeedOutput.int16[i];
