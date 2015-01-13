@@ -14,7 +14,8 @@ struct DebugOut_t
 
 // 18-byte data structure for fast transmission (up to 192 Hz)
 struct HighSpeed_t {
-	int16_t int16[9];
+	int16_t int16[8];
+	uint8_t uint8[2];
 } __attribute__((packed));
 
 typedef std::function<void(const char*)> HeaderCallback;
@@ -27,6 +28,7 @@ void ProcessIncoming();
 
 void SendHeaderRequest(bool highSpeed);
 void SendOutputRequest(uint8_t interval);
+void SendHighSpeedResetRequest(void);
 
 void SendBuffer(const Buffer_t& txBuffer);
 

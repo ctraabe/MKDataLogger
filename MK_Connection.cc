@@ -16,6 +16,7 @@ enum TxCommands : uint8_t {
 	TXCMD_DEBUG_OUTPUT = 'd',
 	TXCMD_HIGHSPEED_HEADER = 'o',
 	TXCMD_HIGHSPEED_OUTPUT = 'i',
+	TXCMD_HIGHSPEED_RESET = 'r',
 };
 
 enum { TX_BUFFER_SIZE = 4096 };
@@ -63,7 +64,7 @@ void SendHeaderRequest(bool highSpeed)
 
 	// Roll the header label
 	if (highSpeed)
-		mHeaderLabel = ++mHeaderLabel % 9;
+		mHeaderLabel = ++mHeaderLabel % 10;
 	else
 		mHeaderLabel = ++mHeaderLabel % 32;
 }
@@ -78,6 +79,18 @@ void SendOutputRequest(uint8_t interval)
 		MKProtocol_CreateSerialFrame(&txBuffer, TXCMD_DEBUG_OUTPUT, FC_ADDRESS, 1, &interval, 1);
 	else
 		MKProtocol_CreateSerialFrame(&txBuffer, TXCMD_HIGHSPEED_OUTPUT, FC_ADDRESS, 0);
+
+	// Send txBuffer to NaviCtrl
+	SendBuffer(txBuffer);
+}
+
+void SendHighSpeedResetRequest(void)
+{
+	// Initialize a buffer for the packet
+	Buffer_t txBuffer;
+	Buffer_Init(&txBuffer, mTxBufferData, TX_BUFFER_SIZE);
+
+	MKProtocol_CreateSerialFrame(&txBuffer, TXCMD_HIGHSPEED_RESET, FC_ADDRESS, 0);
 
 	// Send txBuffer to NaviCtrl
 	SendBuffer(txBuffer);

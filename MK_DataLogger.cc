@@ -11,7 +11,7 @@ static void sigterm_handler(int sig)
 
 void LogHeader(bool highSpeed)
 {
-	int n = highSpeed ? 9 : 32;
+	int n = highSpeed ? 10 : 32;
 	for (uint8_t i = 0; i < n; i++) {
 		for (uint8_t j = 0; j < 16; j++) {
 			mLogFile << mLabels[i][j];
@@ -29,10 +29,11 @@ void LogOutput(bool highSpeed)
 	// 		+ (now.tv_usec - StartTime.tv_usec)) / 1.0e6 << ",";
 
 	if (highSpeed) {
-		for (uint8_t i = 0; i < 9; ++i) {
-			mLogFile << mMKHighSpeedOutput.int16[i];
-			if (i < 8) mLogFile << ",";
+		for (uint8_t i = 0; i < 8; ++i) {
+			mLogFile << mMKHighSpeedOutput.int16[i] << ",";
 		}
+		mLogFile << (int)mMKHighSpeedOutput.uint8[0] << ",";
+		mLogFile << (int)mMKHighSpeedOutput.uint8[1];
 	} else {
 		for (uint8_t i = 0; i < 32; ++i) {
 			mLogFile << mMKDebugOutput.Analog[i];
@@ -120,9 +121,9 @@ bool ParseOptions(int argc, char *argv[], int *port, int *frequency,
 
 int main(int argc, char *argv[])
 {
-	bool getHeader = true, highSpeed = false;
+	bool getHeader = true, highSpeed = true;
 	int port = 16, frequency = 10;
-	string filename = "mk_datalog.txt";
+	string filename = "sensor_data.csv";
 
 	signal(SIGQUIT, sigterm_handler); /* Quit (POSIX).  */
 	signal(SIGINT , sigterm_handler); /* Interrupt (ANSI).  */
@@ -192,7 +193,7 @@ int main(int argc, char *argv[])
 		// Request debug data being sent from the MK, this has to be done every few seconds or
 		// the MK will stop sending the data
 		if (getHeader && (counter > HEADER_RQST_TIMER)) {
-			if ((highSpeed && (mLabelsRcvd != 0x000001FF))
+			if ((highSpeed && (mLabelsRcvd != 0x000003FF))
 					|| (!highSpeed && (mLabelsRcvd != 0xFFFFFFFF))) {
 				SendHeaderRequest(highSpeed);
 				counter = 0;
@@ -216,6 +217,7 @@ int main(int argc, char *argv[])
 	cout << "Received termination signal" << endl;
 	cout << "Closing log file" << endl;
 	mLogFile.close();
+	if (highSpeed) SendHighSpeedResetRequest();
 
 	return 0;
 }
