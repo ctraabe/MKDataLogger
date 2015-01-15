@@ -217,7 +217,20 @@ int main(int argc, char *argv[])
 	cout << "Received termination signal" << endl;
 	cout << "Closing log file" << endl;
 	mLogFile.close();
-	if (highSpeed) SendHighSpeedResetRequest();
+	// Send a bunch of cancel requests
+	if (highSpeed) {
+		for (int i = 16; i; i--) {
+			nanosleep(&REQ, &rem);  // loop twice per expected reception interval
+			nanosleep(&REQ, &rem);  // loop twice per expected reception interval
+			nanosleep(&REQ, &rem);  // loop twice per expected reception interval
+			nanosleep(&REQ, &rem);  // loop twice per expected reception interval
+			nanosleep(&REQ, &rem);  // loop twice per expected reception interval
+			nanosleep(&REQ, &rem);  // loop twice per expected reception interval
+			nanosleep(&REQ, &rem);  // loop twice per expected reception interval
+			nanosleep(&REQ, &rem);  // loop twice per expected reception interval
+			SendHighSpeedResetRequest();
+		}
+	}
 
 	return 0;
 }
