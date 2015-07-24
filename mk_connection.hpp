@@ -1,7 +1,7 @@
-#ifndef __MKCONNECTION_H
-#define __MKCONNECTION_H
+#ifndef __MK_CONNECTION_H
+#define __MK_CONNECTION_H
 
-#include "MK_Protocol.h"
+#include "mk_protocol.hpp"
 
 #include <functional>
 
@@ -40,4 +40,4 @@ void HandleHeader(const SerialMsg_t& msg);
 void HandleDebugOutput(const SerialMsg_t& msg);
 void HandleHighSpeedOutput(const SerialMsg_t& msg);
 
-#endif
+#endif  // __MK_CONNECTION_H

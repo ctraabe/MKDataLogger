@@ -3,7 +3,7 @@
  * This code is based on the MikroKopter NaviCtrl firmware, Copyright MikroKopter.
  */
 
-#include "MK_Protocol.h"
+#include "mk_protocol.hpp"
 
 #include <cstdarg>
 #include <cstring>

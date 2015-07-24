@@ -3,8 +3,8 @@
  * This code is based on the MikroKopter NaviCtrl firmware, Copyright MikroKopter.
  */
 
-#ifndef __MKPROTOCOL_H
-#define __MKPROTOCOL_H
+#ifndef __MK_PROTOCOL_H
+#define __MK_PROTOCOL_H
 
 #include <cstdint>
 
@@ -42,4 +42,4 @@ uint8_t MKProtocol_CreateSerialFrame(Buffer_t* pTxBuff, uint8_t CmdID, uint8_t A
 void MKProtocol_DecodeSerialFrameHeader(Buffer_t* pRxBuff, SerialMsg_t* pSerialMsg);
 void MKProtocol_DecodeSerialFrameData(Buffer_t* pRxBuff, SerialMsg_t* pSerialMsg);
 
-#endif // __MKPROTOCOL_H
+#endif  // __MK_PROTOCOL_H

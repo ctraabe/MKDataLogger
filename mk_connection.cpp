@@ -1,4 +1,4 @@
-#include "MK_Connection.h"
+#include "mk_connection.hpp"
 #include "rs232.h"
 
 #include <iostream>

@@ -1,7 +1,7 @@
-#ifndef __MK_DATALOGGER_H
-#define __MK_DATALOGGER_H
+#ifndef __MAIN_H
+#define __MAIN_H
 
-#include "MK_Connection.h"
+#include "mk_connection.hpp"
 
 #include <csignal>
 #include <cstdint>
@@ -28,4 +28,4 @@ DebugOut_t mMKDebugOutput;
 HighSpeed_t mMKHighSpeedOutput;
 std::ofstream mLogFile;
 
-#endif
+#endif  // __MAIN_H
