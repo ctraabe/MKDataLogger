@@ -121,7 +121,7 @@ bool ParseOptions(int argc, char *argv[], int *port, int *frequency,
 
 int main(int argc, char *argv[])
 {
-	bool getHeader = true, highSpeed = true;
+	bool getHeader = false, highSpeed = true;
 	int port = 16, frequency = 10;
 	string filename = "sensor_data.csv";
 
@@ -208,7 +208,7 @@ int main(int argc, char *argv[])
 			SendOutputRequest(OUTPUT_PERIOD);
 			counter = 0;
 		}
-		if (getHeader || !highSpeed) counter++;
+		counter++;
 
 		nanosleep(&REQ, &rem);  // loop twice per expected reception interval
 	}
@@ -217,20 +217,6 @@ int main(int argc, char *argv[])
 	cout << "Received termination signal" << endl;
 	cout << "Closing log file" << endl;
 	mLogFile.close();
-	// Send a bunch of cancel requests
-	if (highSpeed) {
-		for (int i = 16; i; i--) {
-			nanosleep(&REQ, &rem);  // loop twice per expected reception interval
-			nanosleep(&REQ, &rem);  // loop twice per expected reception interval
-			nanosleep(&REQ, &rem);  // loop twice per expected reception interval
-			nanosleep(&REQ, &rem);  // loop twice per expected reception interval
-			nanosleep(&REQ, &rem);  // loop twice per expected reception interval
-			nanosleep(&REQ, &rem);  // loop twice per expected reception interval
-			nanosleep(&REQ, &rem);  // loop twice per expected reception interval
-			nanosleep(&REQ, &rem);  // loop twice per expected reception interval
-			SendHighSpeedResetRequest();
-		}
-	}
 
 	return 0;
 }
